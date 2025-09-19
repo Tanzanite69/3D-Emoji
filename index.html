@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 3D Emoji Animator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+
+        .emoji-container {
+            perspective: 1000px;
+        }
+
+        .generated-emoji {
+            animation: float 6s ease-in-out infinite;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 
+                        0 0 15px rgba(0, 0, 0, 0.07),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px) rotateY(0deg);
+            }
+            50% {
+                transform: translateY(-20px) rotateY(20deg);
+            }
+            100% {
+                transform: translateY(0px) rotateY(0deg);
+            }
+        }
+
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Custom styling for prompt input */
+        .prompt-input-focus {
+             box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #3b82f6;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-2xl mx-auto p-4 md:p-8">
+        <div class="bg-white rounded-2xl shadow-xl p-6 md:p-10">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">3D Emoji Animator AI</h1>
+                <p class="text-gray-500 mt-2">Describe an emoji, and watch AI bring it to life!</p>
+            </div>
+
+            <!-- Prompt Input Area -->
+            <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                <input type="text" id="prompt-input" placeholder="e.g., A happy emoji with a party hat" class="w-full px-4 py-3 text-lg text-gray-700 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-300">
+                <button id="generate-btn" class="w-full sm:w-auto bg-blue-600 text-white font-semibold px-6 py-3 text-lg rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-transform transform hover:scale-105 duration-300">
+                    Generate
+                </button>
+            </div>
+            
+            <!-- Example Prompts -->
+            <div class="text-center mb-8">
+                <p class="text-sm text-gray-500 mb-2">Try these examples:</p>
+                <div id="examples-container" class="flex flex-wrap justify-center gap-2">
+                    <button class="example-prompt bg-gray-200 text-gray-600 text-sm px-3 py-1 rounded-full hover:bg-gray-300 transition">male emoji with beard</button>
+                    <button class="example-prompt bg-gray-200 text-gray-600 text-sm px-3 py-1 rounded-full hover:bg-gray-300 transition">crying emoji with tears</button>
+                    <button class="example-prompt bg-gray-200 text-gray-600 text-sm px-3 py-1 rounded-full hover:bg-gray-300 transition">robot emoji with glowing eyes</button>
+                </div>
+            </div>
+
+            <!-- Emoji Display Area -->
+            <div id="emoji-display" class="w-full h-80 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200 emoji-container">
+                <div class="text-gray-400">Your generated emoji will appear here</div>
+            </div>
+            
+            <!-- Download Button Container -->
+            <div id="download-container" class="text-center mt-4 h-12"></div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="text-center text-red-500 mt-2 h-6"></div>
+        </div>
+    </div>
+
+    <script>
+        const generateBtn = document.getElementById('generate-btn');
+        const promptInput = document.getElementById('prompt-input');
+        const emojiDisplay = document.getElementById('emoji-display');
+        const errorMessage = document.getElementById('error-message');
+        const examplesContainer = document.getElementById('examples-container');
+        const downloadContainer = document.getElementById('download-container');
+        
+        let apiKey = '';
+
+        async function getApiKey() {
+            try {
+                const response = await fetch('/api/key');
+                const data = await response.json();
+                apiKey = data.apiKey;
+            } catch (error) {
+                console.error('Failed to fetch API key:', error);
+                showError('Could not retrieve API Key from server.');
+            }
+        }
+
+        // Handle example prompt clicks
+        examplesContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('example-prompt')) {
+                promptInput.value = e.target.textContent;
+                generateBtn.click();
+            }
+        });
+
+        generateBtn.addEventListener('click', () => {
+            const userPrompt = promptInput.value.trim();
+            if (!userPrompt) {
+                showError("Please enter a description for the emoji.");
+                return;
+            }
+            if (!apiKey) {
+                showError("API Key is not configured. Deployment may be incomplete.");
+                return;
+            }
+            generateEmoji(userPrompt);
+        });
+        
+        promptInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                generateBtn.click();
+            }
+        });
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            setTimeout(() => {
+                errorMessage.textContent = '';
+            }, 4000);
+        }
+
+        function showLoading() {
+            emojiDisplay.innerHTML = '<div class="loader"></div>';
+            downloadContainer.innerHTML = '';
+            errorMessage.textContent = '';
+        }
+
+        async function generateEmoji(userPrompt) {
+            showLoading();
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+
+            const fullPrompt = `${userPrompt}, 3d rendered emoji, claymation style, centered on a clean white background, high resolution`;
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+
+            const payload = {
+                instances: [{ prompt: fullPrompt }],
+                parameters: { "sampleCount": 1 }
+            };
+
+            try {
+                const response = await fetchWithExponentialBackoff(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                    const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                    displayEmoji(imageUrl);
+                } else {
+                    throw new Error("Could not find image data in the response.");
+                }
+            } catch (error) {
+                console.error("Error generating emoji:", error);
+                showError("Sorry, something went wrong. Please try again.");
+                emojiDisplay.innerHTML = '<div class="text-gray-400">Failed to generate emoji.</div>';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate';
+            }
+        }
+        
+        async function fetchWithExponentialBackoff(url, options, retries = 5, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.status !== 429) {
+                         return response;
+                    }
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+            }
+            throw new Error('Max retries reached');
+        }
+
+        function displayEmoji(imageUrl) {
+            emojiDisplay.innerHTML = '';
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = promptInput.value;
+            img.className = 'w-64 h-64 object-cover rounded-full generated-emoji';
+            emojiDisplay.appendChild(img);
+
+            downloadContainer.innerHTML = '';
+            const downloadBtn = document.createElement('a');
+            downloadBtn.href = imageUrl;
+            const filename = (promptInput.value.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'emoji') + '.png';
+            downloadBtn.download = filename;
+            downloadBtn.textContent = 'Download Emoji';
+            downloadBtn.className = 'inline-block bg-green-600 text-white font-semibold px-6 py-3 text-lg rounded-xl hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 transition-transform transform hover:scale-105 duration-300';
+            downloadContainer.appendChild(downloadBtn);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            getApiKey();
+            promptInput.value = "A friendly winking emoji";
+        });
+
+    </script>
+</body>
+</html>
